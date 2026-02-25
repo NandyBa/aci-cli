@@ -9,6 +9,7 @@ import {
   fetchAddressOutflows,
 } from "@/lib/token-holders/token-holders";
 import { resolveMarket, resolveAsset } from "@/lib/aave/resolvers";
+import { AAVE_MARKETS } from "@/lib/aave/markets";
 
 const resolveAddress = async (
   holders: Map<Address, bigint>,
@@ -159,12 +160,61 @@ export const traceBorrowerOutflowsAction = async (
       colors.green("Rank"),
       colors.green("Recipient"),
       colors.green(`Total Sent (${assetSymbol})`),
+      colors.green("Known (AaveAddrBook)"),
+      colors.green("ENS Name"),
+      colors.green("Etherscan Tag"),
     ],
   });
 
-  sorted.forEach(([recipient, total], i) => {
-    table.push([i + 1, recipient, formatUnits(total, decimals)]);
-  });
+  // Helper to check if address appears in Aave address book (any market)
+  const isKnownInAddressBook = (addr: Address): boolean => {
+    const lower = addr.toLowerCase();
+    for (const mkt of AAVE_MARKETS) {
+      const assets = Object.values(mkt.market.ASSETS);
+      for (const a of assets) {
+        if (
+          (a as any).UNDERLYING?.toLowerCase() === lower ||
+          (a as any).V_TOKEN?.toLowerCase() === lower ||
+          (a as any).A_TOKEN?.toLowerCase() === lower
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Helper to resolve ENS name (if any) using the client
+  const resolveEnsName = async (addr: Address): Promise<string> => {
+    try {
+      // viem client may expose a method to fetch ENS name; using generic call
+      const name = await client.getEnsName?.({ address: addr as any });
+      return name || "-";
+    } catch (e) {
+      return "-";
+    }
+  };
+
+  // Placeholder for Etherscan tag – not implemented, return '-' for now
+  const getEtherscanTag = (addr: Address): string => {
+    return "-";
+  };
+
+  let rank = 1;
+  for (const [recipient, total] of sorted) {
+    const known = isKnownInAddressBook(recipient) ? "Yes" : "No";
+    const ensName = await resolveEnsName(recipient);
+    const etherscanTag = getEtherscanTag(recipient);
+    table.push([
+      rank,
+      recipient,
+      formatUnits(total, decimals),
+      known,
+      ensName,
+      etherscanTag,
+    ]);
+    rank++;
+  }
 
   console.log(
     `\nTop ${topN} recipients of ${colors.green(assetSymbol)} from ${colors.cyan(selectedAddress)}:\n`,
