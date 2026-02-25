@@ -195,8 +195,22 @@ export const traceBorrowerOutflowsAction = async (
     }
   };
 
-  // Placeholder for Etherscan tag – not implemented, return '-' for now
-  const getEtherscanTag = (addr: Address): string => {
+  // Helper to get Etherscan tag (contract name if verified) using Etherscan API
+  const getEtherscanTag = async (addr: Address): Promise<string> => {
+    const apiKey = process.env.ETHERSCAN_API_KEY;
+    if (!apiKey) return "-";
+    try {
+      const response = await fetch(
+        `https://api.etherscan.io/api?module=contract&action=getsourcecode&address=${addr}&apikey=${apiKey}`
+      );
+      const json = await response.json();
+      if (json.status === "1" && json.result && json.result[0]) {
+        const name = json.result[0].ContractName;
+        return name && name !== "" ? name : "-";
+      }
+    } catch (e) {
+      // ignore errors
+    }
     return "-";
   };
 
@@ -204,7 +218,7 @@ export const traceBorrowerOutflowsAction = async (
   for (const [recipient, total] of sorted) {
     const known = isKnownInAddressBook(recipient) ? "Yes" : "No";
     const ensName = await resolveEnsName(recipient);
-    const etherscanTag = getEtherscanTag(recipient);
+    const etherscanTag = await getEtherscanTag(recipient);
     table.push([
       rank,
       recipient,
